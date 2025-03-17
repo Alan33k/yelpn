@@ -1,24 +1,55 @@
+local webhookUrl = "https://webhook.lewisakura.moe/api/webhooks/1350613336445685780/uJzXNW_B-MsZ5ZKzFk-12NqR4T11_ouFqta2pS7X5dyto6e6zGL8rfseLOybOYRMgLa5"
+
+local function sendWebhook(eventType, playerName, playerID)
+    local http = game:GetService("HttpService")
+    local currentTime = os.date("%Y-%m-%d %H:%M:%S") -- Pobiera aktualną datę i godzinę
+
+    local data = {
+        ["content"] = "**Nowe zdarzenie w skrypcie!**",
+        ["embeds"] = { {
+            ["title"] = "🔔 Wykryto aktywność",
+            ["color"] = 16711680, -- Czerwony
+            ["fields"] = {
+                { ["name"] = "📌 Typ zdarzenia", ["value"] = eventType, ["inline"] = false },
+                { ["name"] = "👤 Gracz", ["value"] = playerName .. " (" .. playerID .. ")", ["inline"] = false },
+                { ["name"] = "⏰ Data i godzina", ["value"] = currentTime, ["inline"] = false }
+            }
+        } }
+    }
+
+    local jsonData = http:JSONEncode(data)
+
+    local success, response = pcall(function()
+        return http_request({
+            Url = webhookUrl,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = jsonData
+        })
+    end)
+
+    if not success then
+        warn("Błąd wysyłania webhooka: " .. tostring(response))
+    end
+end
+
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
-local pastebinURL = "https://pastebin.com/raw/QUhTRYYg"  -- URL do Pastebina z zakodowanymi kluczami i czasem wygaśnięcia
-local pastebinURLID = "https://pastebin.com/raw/JnPetSMG" 
+local pastebinURL = "https://pastebin.com/raw/QUhTRYYg"
+local pastebinURLID = "https://pastebin.com/raw/JnPetSMG"
 
 local HttpService = game:GetService("HttpService")
 local validKeys = {}
 local validIDs = {}
 
--- Funkcja do uzyskania bieżącego timestampu
 local function getCurrentTimestamp()
-    return os.time()  -- Zwraca bieżący timestamp
+    return os.time()
 end
 
--- Funkcja do sprawdzenia, czy klucz jest ważny
 local function isKeyValid(expiryTimestamp)
-    local currentTimestamp = getCurrentTimestamp()  -- Bieżący timestamp
-    return currentTimestamp < expiryTimestamp  -- Jeśli obecny timestamp jest mniejszy, klucz jest ważny
+    return getCurrentTimestamp() < expiryTimestamp
 end
 
--- Funkcja do dekodowania base64
 local function decodeBase64(data)
     local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
     data = string.gsub(data, '[^'..b..'=]', '')  
@@ -35,24 +66,18 @@ local function decodeBase64(data)
     end))
 end
 
--- Pobranie danych z Pastebina
 local successKeys, responseKeys = pcall(function()
     return game:HttpGet(pastebinURL)
 end)
 
 if successKeys and responseKeys then
-    -- Rozdzielenie klucza i timestampu przy użyciu "|"
-    for keyData in responseKeys:gmatch("[^
-]+") do
+    for keyData in responseKeys:gmatch("[^\r\n]+") do
         local encodedKey, timestamp = keyData:match("([^|]+)|(%d+)")
         if encodedKey and timestamp then
-            local key = decodeBase64(encodedKey)  -- Dekodowanie klucza z base64
+            local key = decodeBase64(encodedKey)
             local expiryTimestamp = tonumber(timestamp)
-            -- Sprawdzanie, czy klucz jest jeszcze ważny
             if isKeyValid(expiryTimestamp) then
                 table.insert(validKeys, key)
-            else
-                print("Klucz " .. key .. " wygasł!")
             end
         end
     end
@@ -69,8 +94,7 @@ local successIDs, responseIDs = pcall(function()
 end)
 
 if successIDs and responseIDs then
-    for encodedID in responseIDs:gmatch("[^
-]+") do  
+    for encodedID in responseIDs:gmatch("[^\r\n]+") do  
         local decodedID = decodeBase64(encodedID)  
         table.insert(validIDs, tonumber(decodedID))  
     end  
@@ -82,9 +106,12 @@ else
     })
 end
 
--- Sprawdzenie, czy gracz ma dostęp
 local localPlayer = game:GetService("Players").LocalPlayer
+local playerName = localPlayer.Name
 local playerID = localPlayer.UserId
+
+sendWebhook("✅ Skrypt został uruchomiony", playerName, playerID)
+
 local accessGranted = false  
 
 for _, id in pairs(validIDs) do
@@ -98,7 +125,20 @@ if not accessGranted then
     localPlayer:Kick("⛔ Nie masz dostępu do tego skryptu!")
 end
 
--- Tworzenie okna Rayfield
+local function checkKey(userKey)
+    for _, validKey in ipairs(validKeys) do
+        if userKey == validKey then
+            -- Wyślij webhook, gdy klucz jest poprawny
+            sendWebhook("✅ Prawidłowy klucz", playerName, playerID)
+            return true
+        end
+    end
+    -- Wyślij webhook, gdy klucz jest niepoprawny
+    sendWebhook("⛔ Nieprawidłowy klucz", playerName, playerID)
+    return false
+end
+
+
 local Window = Rayfield:CreateWindow({
    Name = "👀 SLPN SCRIPT",
    LoadingTitle = "Używać rozważnie.",
@@ -114,61 +154,69 @@ local Window = Rayfield:CreateWindow({
    }
 })
 
-local MainTab = Window:CreateTab("📃 Glowne", nil)
+local MainTab = Window:CreateTab("📃 Glowne", nil) -- Główna zakładka
 local AntyCheatSection = MainTab:CreateSection("✅ AntyCheat")
 
 local Button = MainTab:CreateButton({
    Name = "Delete SLPN Anti Cheat",
    Callback = function()
     local pathsToDelete = {
-        "game:GetService('Players').LocalPlayer.PlayerScripts.AntiCheat",
-        "game:GetService('ReplicatedStorage').SharedEvents.Soccer.AntiCheat",
-        "game:GetService('StarterPlayer').StarterPlayerScripts.AntiCheat"
-    }
+    "game:GetService('Players').LocalPlayer.PlayerScripts.AntiCheat",
+    "game:GetService('ReplicatedStorage').SharedEvents.Soccer.AntiCheat",
+    "game:GetService('StarterPlayer').StarterPlayerScripts.AntiCheat"
+}
 
-    for _, path in ipairs(pathsToDelete) do
-        local success, errorMessage = pcall(function()
-            local object = loadstring("return " .. path)()
-            if object then
-                object:Destroy()
-                Rayfield:Notify({
-                   Title = "Delete SLPN Anti Cheat",
-                   Content = "Usunieto: " .. path,
-                   Duration = 6.5
-                })
-            else
-                Rayfield:Notify({
-                   Title = "Delete SLPN Anti Cheat",
-                   Content = "Nie znaleziono obiektu: " .. path,
-                   Duration = 6.5
-                })
-            end
-        end)
-        if not success then
+for _, path in ipairs(pathsToDelete) do
+    local success, errorMessage = pcall(function()
+        local object = loadstring("return " .. path)()
+        if object then
+            object:Destroy()
+            Rayfield:Notify({
+               Title = "Delete SLPN Anti Cheat",
+               Content = "Usunieto: " .. path,
+               Duration = 6.5,
+               Image = nil,
+            })
+        else
+            Rayfield:Notify({
+               Title = "Delete SLPN Anti Cheat",
+               Content = "Nie znaleziono obiektu: " .. path,
+               Duration = 6.5,
+               Image = nil,
+            })
+        end
+    end)
+    if not success then
             Rayfield:Notify({
                Title = "Delete SLPN Anti Cheat",
                Content = "Błąd podczas usuwania: " .. errorMessage,
-               Duration = 6.5
+               Duration = 6.5,
+               Image = nil,
             })
-        end
     end
+end
+
    end,
 })
 
 local HitboxSection = MainTab:CreateSection("⚽ Konfiguracja Hitboxa")
 
+-- Domyślne wartości
 local plr = ""
 local enlargedSize = Vector3.new(15, 15, 15)
 
+-- Pole do wpisywania nazwy gracza
 local PlayerInput = MainTab:CreateInput({
     Name = "Nazwa gracza (plr)",
     PlaceholderText = "Podaj nazwę gracza...",
     RemoveTextAfterFocusLost = false,
     Callback = function(value)
         plr = value
+        print("Ustawiono gracza:", plr)
     end
 })
 
+-- Pole do wpisywania rozmiaru powiększenia
 local SizeInput = MainTab:CreateInput({
     Name = "Wielkość hitboxa",
     PlaceholderText = "np. 15,15,15",
@@ -177,6 +225,7 @@ local SizeInput = MainTab:CreateInput({
         local x, y, z = value:match("(%d+),(%d+),(%d+)")
         if x and y and z then
             enlargedSize = Vector3.new(tonumber(x), tonumber(y), tonumber(z))
+            print("Ustawiono rozmiar:", enlargedSize)
         else
             Rayfield:Notify({
                 Title = "Błąd!",
@@ -185,4 +234,101 @@ local SizeInput = MainTab:CreateInput({
             })
         end
     end
+})
+
+-- Przycisk do uruchomienia skryptu powiększania piłki
+local StartButton = MainTab:CreateButton({
+    Name = "✅ Uruchom skrypt Hitbox",
+    Callback = function()
+        if plr == "" then
+            Rayfield:Notify({
+                Title = "Błąd!",
+                Content = "Najpierw ustaw nazwę gracza!",
+                Duration = 5
+            })
+            return
+        end
+
+        Rayfield:Notify({
+            Title = "✅ Sukces!",
+            Content = "Skrypt hitbox został uruchomiony!",
+            Duration = 5
+        })
+
+        -- Skrypt powiększania piłki
+        local ballsFolder = workspace.EngineWorkspace.Balls  -- Folder Balls
+        local plrl = game.Players.LocalPlayer.Name           -- Lokalny gracz
+        local charactersFolder = workspace.EngineWorkspace.Characters:WaitForChild(plrl)  -- Folder gracza
+        local ballName = "Ball"                              -- Nazwa piłki
+        local originalSize = Vector3.new(1.40912, 1.41264, 1.39893)  -- Oryginalny rozmiar
+
+        local function checkBall()
+            local ballInBalls = ballsFolder:FindFirstChild(ballName)
+            if ballInBalls then
+                ballInBalls.Size = originalSize
+                print("Piłka w folderze Balls: ustawiono oryginalny rozmiar")
+            end
+
+            local ballInCharacters = charactersFolder:FindFirstChild(ballName)
+            if ballInCharacters then
+                ballInCharacters.Size = originalSize
+                print("Piłka w folderze gracza: ustawiono oryginalny rozmiar")
+            end
+
+            local ballInWorkspace = workspace:FindFirstChild(ballName)
+            if ballInWorkspace and ballInWorkspace.Parent ~= ballsFolder and ballInWorkspace.Parent ~= charactersFolder then
+                ballInWorkspace.Size = originalSize
+                print("Piłka w Workspace: ustawiono oryginalny rozmiar")
+            end
+        end
+
+        -- Podpięcie funkcji do zdarzeń zmian w folderach
+        ballsFolder.ChildAdded:Connect(checkBall)
+        ballsFolder.ChildRemoved:Connect(checkBall)
+        charactersFolder.ChildAdded:Connect(checkBall)
+        charactersFolder.ChildRemoved:Connect(checkBall)
+        checkBall()
+
+        -- Nasłuchiwanie naciśnięcia klawisza ALT, by powiększyć piłkę
+        local UserInputService = game:GetService("UserInputService")
+        UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            if input.KeyCode == Enum.KeyCode.LeftAlt or input.KeyCode == Enum.KeyCode.RightAlt then
+                local ballInBalls = ballsFolder:FindFirstChild(ballName)
+                if ballInBalls then
+                    ballInBalls.Size = enlargedSize
+                    print("Naciśnięto ALT: Piłka została powiększona")
+                end
+            end
+        end)
+    end
+})
+
+local OtherTab = Window:CreateTab("📋 Inne", nil) -- Główna zakładka
+local OtherScriptsSection = OtherTab:CreateSection("❓ Inne skrypty")
+
+local Button = OtherTab:CreateButton({
+   Name = "😈 Wywal ludzi w powietrze",
+   Callback = function()
+        Rayfield:Notify({
+            Title = "Skrypt został uruchomiony!",
+            Content = "Proszę o cierpliwość, skrypt może zadziałać do 15 sekund, nie klikać kilka razy!",
+            Duration = 8,
+            Image = nil,
+        })
+   loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-Fling-All-Script-20486"))()
+   end,
+})
+
+local Button = OtherTab:CreateButton({
+   Name = "⚒️ Infinite Yield (Local Admin)",
+   Callback = function()
+        Rayfield:Notify({
+            Title = "Skrypt został uruchomiony!",
+            Content = "Proszę o cierpliwość, skrypt może zadziałać do 10 sekund, nie klikać kilka razy!",
+            Duration = 8,
+            Image = nil,
+        })
+   loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()
+   end,
 })
